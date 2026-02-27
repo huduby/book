@@ -1,114 +1,92 @@
 import streamlit as st
-import requests
-from datetime import datetime
+import pandas as pd
+import numpy as np
+import ast
 
-# ── 페이지 설정 ──────────────────────────────────────────────
+artists = []
+selected_year = ""
+selected_artist = ""
+search_keyword = ""
+
+# 세션 저장
+if "clicked_row" not in st.session_state:
+    st.session_state.clicked_row = False
+if "last_query" not in st.session_state:
+    st.session_state.last_query = ""
+    
+# 페이지 기본 설정(탭 제목, 아이콘, 레이아웃 등)
 st.set_page_config(
-    page_title="📚 도서 검색기",
-    page_icon="📚",
+    page_title="2019-2023 가사 검색",
+    page_icon="🚀",
+    layout="centered"
 )
+    
+st.title("🚀 2019-2023 가사 검색")
+st.subheader("그 때 그 시절의 노래를 찾아보세요!", divider="yellow", text_alignment="center")
+st.write("")
+# 파일읽어오기
+@st.cache_data(show_spinner="CSV 파일을 불러오는 중입니다...")
+def load_data(file_path):
+    data = pd.read_csv(file_path)
+    return data
 
-# ── API 함수 ─────────────────────────────────────────────────
-def search_books(query: str, limit: int = 15) -> list:
-    """Open Library Search API"""
-    url = "https://openlibrary.org/search.json"
-    params = {"q": query, "limit": limit, "fields": "key,title,author_name,first_publish_year,isbn,cover_i,subject,number_of_pages_median,ratings_average"}
-    r = requests.get(url, params=params, timeout=10)
-    r.raise_for_status()
-    return r.json().get("docs", [])
+df = load_data('data/lyrics_2019_2023.csv')
+years = np.arange(2019, 2024)
+with open('data/artists.txt', 'r', encoding='utf-8') as f:
+    artists_data = f.readlines()
+artists = artists_data[0].strip().split("/")
 
-
-def get_cover_url(cover_id, size="M"):
-    if cover_id:
-        return f"https://covers.openlibrary.org/b/id/{cover_id}-{size}.jpg"
-    return None
-
-
-def get_book_detail(ol_key: str) -> dict:
-    """작품 상세 정보 (설명 등)"""
-    url = f"https://openlibrary.org{ol_key}.json"
-    try:
-        r = requests.get(url, timeout=8)
-        return r.json()
-    except:
-        return {}
-
-# ── 세션 초기화 ───────────────────────────────────────────────
-if "search_results" not in st.session_state:
-    st.session_state.search_results = []
-if "selected_book" not in st.session_state:
-    st.session_state.selected_book = None
-
-# ── 메인 ─────────────────────────────────────────────────────
-st.markdown("# 📚 도서 검색기")
-st.markdown("Open Library의 수백만 권 도서 데이터베이스를 검색하세요.")
-
-# 검색 바
-col1, col2, col3 = st.columns([4, 1, 1])
+col1 , col2 = st.columns(2)
 with col1:
-    query = st.text_input("", placeholder="책 제목, 저자명, ISBN 입력...", label_visibility="collapsed")
+    selected_year = st.selectbox("년도 선택", years, index=None)
 with col2:
-    limit = st.selectbox("", [10, 20, 30], label_visibility="collapsed")
-with col3:
-    search_btn = st.button("🔍 검색", use_container_width=True)
+    selected_artist = st.selectbox("가수 선택", artists, index=None)
 
-if search_btn and query:
-    with st.spinner(f"'{query}' 검색 중..."):
-        try:
-            results = search_books(query, limit)
-            st.session_state.search_results = results
-            st.session_state.selected_book = None
-        except Exception as e:
-            st.error(f"검색 실패: {e}")
+search_str = ""
+search_keyword = st.text_input("곡명 검색").strip()
 
-# 검색 결과
-if st.session_state.search_results:
-    results = st.session_state.search_results
-    st.markdown(f"### 검색 결과 ({len(results)}권)")
-
-    # 책 목록
-    for bk in results:
-        title  = bk.get("title", "제목 없음")
-        authors = ", ".join(bk.get("author_name", ["알 수 없음"])[:2])
-        year   = bk.get("first_publish_year", "")
-        pages  = bk.get("number_of_pages_median", "")
-        rating = bk.get("ratings_average", None)
-        cover  = get_cover_url(bk.get("cover_i"))
-        subjects = bk.get("subject", [])[:8]
-
-        c1, c2 = st.columns([2,5],vertical_alignment="center",border=False,gap="medium")
-        with c1:
-            if cover:
-                st.markdown(f"""
-                    <div style="
-                        width:140px;
-                        height:200px;
-                        border:1px solid #8C8C8C;
-                        padding:4px;
-                        display:flex;
-                        align-items:center;
-                        justify-content:center;
-                    ">
-                        <img src="{cover}" 
-                            style="max-width:100%; max-height:100%; object-fit:contain;">
-                    </div>""", unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div align="center" style="width:150;height:200;">📖</div>', unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"##### {title}")
-            st.markdown(f"<div>✍️ 저자: {authors}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div>🔊 최초 출판: {year}년</div>", unsafe_allow_html=True)
-            if pages:
-                st.markdown(f"<div>📄 페이지: {pages}p</div>", unsafe_allow_html=True)
-            if rating:
-                stars = "⭐" * round(rating)
-                st.markdown(f"<div>⭐ 평점: {stars} ({rating:.1f})</div>", unsafe_allow_html=True)
-            if subjects:
-                badges = "".join([f'<span class="badge">{s}</span>' for s in subjects])
-                st.markdown(f"📚 분야: {badges}", unsafe_allow_html=True)
-            ol_url = f"https://openlibrary.org{bk.get('key','')}"
-            st.markdown(f"[🔗 Open Library에서 보기]({ol_url})")       
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)    
-
-st.markdown("---")
-st.caption("데이터 출처: Open Library API (무료, API 키 불필요) · openlibrary.org")
+if st.button("검색"):
+    if selected_year is not None:
+        search_str = f" (year == {selected_year}) "
+    if selected_artist is not None:
+        if search_str != "":
+            search_str += " and "
+        search_str += f" (artist == '{selected_artist.strip()}') "
+    if search_keyword != "":
+        if search_str != "":
+            search_str += " and "
+        search_str += f" (lyrics.str.contains('{search_keyword}')) "
+    # st.write(search_str)
+    if search_str != "":
+        st.session_state.last_query = search_str
+        st.session_state.clicked_row = True
+    else:
+        st.warning("검색 조건을 하나 이상 선택하세요.")
+        st.session_state.clicked_row = False
+        
+if st.session_state.clicked_row:
+    filtered_df = df.query(st.session_state.last_query)
+    filtered_df = filtered_df.groupby("song_id")[["artist", "song_name","lyrics"]].max()
+        
+    st.write(f"검색 결과: {len(filtered_df)}곡")
+    
+    data = st.dataframe(filtered_df,
+                 selection_mode='single-row',
+                 on_select = "rerun",
+                 use_container_width=True,
+                 key="lyrics_table")
+    
+    st.divider()
+    # # 가사 표시 로직
+    if data.selection.rows:
+        idx = data.selection.rows[0]
+        selected_song = filtered_df.iloc[idx]
+        st.subheader(f"✅ {selected_song['song_name']} 가사")
+        
+        lyrics_lst = ast.literal_eval(selected_song['lyrics']) # 객체로 만들기
+        lyrics_lines = '<br>'.join(lyrics_lst)
+        st.markdown(f"{lyrics_lines}", unsafe_allow_html=True)
+        # st.code(lyrics_lines, language=None)
+    else:
+        st.info("👉 가사를 보려면 목록에서 행을 클릭하세요.")
+    
